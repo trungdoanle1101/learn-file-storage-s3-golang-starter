@@ -6,7 +6,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -71,12 +70,8 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusUnauthorized, "You are not authorized to perform this operation", nil)
 		return
 	}
-	tmp := strings.Split(mediaType, "/")
-	if len(tmp) == 0 {
-		respondWithError(w, http.StatusBadRequest, "Couldn't retrieve file extension from requedst header", nil)
-		return
-	}
-	assetPath := getAssetPath(videoID, mediaType)
+
+	assetPath := getAssetPath(mediaType)
 	assetDiskPath := cfg.getAssetDiskPath(assetPath)
 
 	newFile, err := os.Create(assetDiskPath)
