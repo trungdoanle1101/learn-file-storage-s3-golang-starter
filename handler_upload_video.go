@@ -86,6 +86,20 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	fastStartFileName, err := processVideoForFastStart(tempFileName)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create fast start video", err)
+		return
+	}
+	defer os.Remove(fastStartFileName)
+
+	fastStartFile, err := os.Open(fastStartFileName)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't open fast start file", err)
+		return
+	}
+	defer fastStartFile.Close()
+
 	ar, err := getVideoAspectRatio(tempFileName)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't obtain aspect ratio", err)
@@ -106,11 +120,11 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	objectKey := fmt.Sprintf("%s/%s.mp4", arType, hex.EncodeToString(randomBytes)) 
+	objectKey := fmt.Sprintf("%s/%s.mp4", arType, hex.EncodeToString(randomBytes))
 	s3PutObjectInput := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
 		Key:         &objectKey,
-		Body:        tempFile,
+		Body:        fastStartFile,
 		ContentType: &mediaType,
 	}
 
@@ -121,15 +135,22 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	newURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, objectKey)
+	// newURL := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, objectKey)
+	newURL := fmt.Sprintf("%s,%s", cfg.s3Bucket, objectKey)
 	video.VideoURL = &newURL
-
 	err = cfg.db.UpdateVideo(video)
+
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update videoURL", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, nil)
+	video, err = cfg.dbVideoToSignedVideo(video)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't presign video", err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, video)
 
 }
